@@ -6,7 +6,7 @@ from random import choice
 ec2_client = boto3.client('ec2')
 asg_client = boto3.client('autoscaling')
 
-# --- Functions
+# ----- Functions
 def lambda_handler(event, context):
     ''' Entry point for lambda function. Expects event object in one of the following formats:
         Kill a random instance in an autoscaling group:
@@ -33,14 +33,31 @@ def lambda_handler(event, context):
         else:
             raise ValueError("Required key 'asg_name' was not found in event object")
     elif mode == 'random_instance':
-        # TODO implement
-        raise NotImplementedError('random_instance mode is not ready')
+        return_message = kill_random()
     else:
         raise ValueError(f"Unexpected mode '{mode}'")
 
     return {
       'message': return_message
     }
+
+def kill_random():
+    ''' Kill a random instance with a state of 'running' in AWS account. '''
+    # get list of all running instance ids
+    candidate_instances = get_ec2_instance_ids([{
+        'Name' : 'instance-state-name',
+        'Values' : ['running']
+    }])
+
+    # make sure we have at least one instance to terminate
+    num_candidates = len(candidate_instances)
+    if num_candidates == 0:
+        raise RuntimeError("Could not find any instances in 'running' state")
+
+    # terminate a random ec2 instance from list
+    terminated_instance = terminate_random_ec2_instance(candidate_instances)
+
+    return f'Terminated random ec2 instance {terminated_instance} from {num_candidates} possible candidates'
 
 def kill_in_asg(asg_name):
     ''' Kill a random instance in autoscaling group. 
@@ -58,20 +75,51 @@ def kill_in_asg(asg_name):
                 candidate_instances.append(id)
 
     # make sure we have at least one instance to terminate
-    if len(candidate_instances) == 0:
+    num_candidates = len(candidate_instances)
+    if num_candidates == 0:
         raise RuntimeError(f"Could not find any instances in 'InService' and 'running' state in autoscaling group '{asg_name}'")
 
-    # pick a random instance
-    term_instance = choice(candidate_instances)
-  
-    # terminate instance
-    terminate_instance(term_instance)
+    # terminate random instance
+    term_instance = terminate_random_ec2_instance(candidate_instances)
 
-    return f'Terminated instance: {term_instance} in autoscaling group {asg_name}'
+    return f'Terminated instance {term_instance} in autoscaling group {asg_name} from {num_candidates} possible candidates'
+
+# ----- Helper functions
+def get_ec2_instance_ids(filter):
+    ''' Wrapper for describe_instances to return list of instanceids only.
+        Parameters:
+            filter: filter as described in https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
+    '''
+    # first time so we have no NextToken
+    # TODO remove MaxResults 
+    resp = ec2_client.describe_instances(Filters=filter, MaxResults=5)
+
+    # create list of instance ids to return
+    instanceids = get_instanceids(resp)
+
+    # keep making requests until NextToken is not set (no more results)
+    while('NextToken' in resp.keys()):
+        # get next page of running ec2 instances with our token
+        resp = ec2_client.describe_instances(Filters=filter, NextToken=resp['NextToken'])
+        # add instance ids to list of instance ids
+        instanceids.extend(get_instanceids(resp))
+    
+    return instanceids
+
+def get_instanceids(resp):
+    ''' extract instance ids from response of describe_instances. Returns list of instance ids.
+        Expected input: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
+    '''
+    return_list = list()
+    for reservation in resp['Reservations']:
+        for instance in reservation['Instances']:
+            return_list.append(instance['InstanceId'])
+
+    return return_list
 
 def get_ec2_instance_state(instanceid):
     ''' Get the state name of an AWS EC2 instance given by instanceid.
-      Return values: 'pending'|'running'|'shutting-down'|'terminated'|'stopping'|'stopped'
+        Return values: 'pending'|'running'|'shutting-down'|'terminated'|'stopping'|'stopped'
     '''
     try:
         return ec2_client.describe_instances(
@@ -95,6 +143,11 @@ def get_asg_instances(asg_name):
     except IndexError:
         raise RuntimeError(f"Auto scaling group '{asg_name}' does not exist")
 
-def terminate_instance(instanceid):
-    ''' Helper function to terminate ec2 instance '''
-    ec2_client.terminate_instances(InstanceIds=[instanceid])
+def terminate_random_ec2_instance(instanceid_list):
+    ''' Helper function to terminate random ec2 instance from list of instance ids. Returns id of terminated instance '''
+    # pick random instance
+    term_instance = choice(instanceid_list)
+    # terminate it
+    ec2_client.terminate_instances(InstanceIds=[term_instance])
+    # return id
+    return term_instance
