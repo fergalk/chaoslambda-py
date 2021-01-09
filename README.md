@@ -4,7 +4,7 @@ This is a [Chaos Monkey](https://github.com/Netflix/chaosmonkey) implementation 
 
 Chaos lambda randomly terminates EC2 instances in autoscaling groups.
 
-# TODO:
+# TODO
 - deployment script/cloudformation template
 - testing
 - add cloudwatch logging on success/failure
