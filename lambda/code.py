@@ -95,18 +95,18 @@ def get_ec2_instance_ids(filter):
     resp = ec2_client.describe_instances(Filters=filter, MaxResults=5)
 
     # create list of instance ids to return
-    instanceids = get_instanceids(resp)
+    instanceids = _extract_instanceids(resp)
 
     # keep making requests until NextToken is not set (no more results)
     while('NextToken' in resp.keys()):
         # get next page of running ec2 instances with our token
         resp = ec2_client.describe_instances(Filters=filter, NextToken=resp['NextToken'])
         # add instance ids to list of instance ids
-        instanceids.extend(get_instanceids(resp))
+        instanceids.extend(_extract_instanceids(resp))
     
     return instanceids
 
-def get_instanceids(resp):
+def _extract_instanceids(resp):
     ''' extract instance ids from response of describe_instances. Returns list of instance ids.
         Expected input: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
     '''
