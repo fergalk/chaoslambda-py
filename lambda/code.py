@@ -48,24 +48,26 @@ def get_ec2_instance_state(instanceid):
   ''' Get the state name of an AWS EC2 instance given by instanceid.
       Return values: 'pending'|'running'|'shutting-down'|'terminated'|'stopping'|'stopped'
   '''
-  try:
-      return ec2_client.describe_instances(
-          Filters=[{
-            'Name': 'instance-id', 'Values': [instanceid]
-          }]
-        )['Reservations'][0]['Instances'][0]['State']['Name']
-  # If the instance given by instanceid doesn't exist, we'll get an IndexError. Catch & reraise it as a more helpful exception.
-  except IndexError:
-      raise RuntimeError(f"EC2 instance '{instanceid}' does not exist")
+    try:
+        return ec2_client.describe_instances(
+            Filters=[{
+              'Name': 'instance-id', 'Values': [instanceid]
+            }]
+          )['Reservations'][0]['Instances'][0]['State']['Name']
+    # If the instance given by instanceid doesn't exist, we'll get an IndexError. Catch & reraise it as a more helpful exception.
+    except IndexError:
+        raise RuntimeError(f"EC2 instance '{instanceid}' does not exist")
 
 def get_asg_instances(asg_name):
   ''' Get instances in auto scaling group given by asg_name.
       Output format can be found at https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/autoscaling.html#AutoScaling.Client.describe_auto_scaling_groups
   '''
-  try:
-      return asg_client.describe_auto_scaling_groups(
-          AutoScalingGroupNames=[asg_name]
-        )['AutoScalingGroups'][0]['Instances']
-  # If the group doesn't exist, we'll get an IndexError exception. Catch & reraise it as a more helpful exception.
-  except IndexError:
-      raise RuntimeError(f"Auto scaling group '{asg_name}' does not exist")
+    try:
+        return asg_client.describe_auto_scaling_groups(
+            AutoScalingGroupNames=[asg_name]
+          )['AutoScalingGroups'][0]['Instances']
+    # If the group doesn't exist, we'll get an IndexError exception. Catch & reraise it as a more helpful exception.
+    except IndexError:
+        raise RuntimeError(f"Auto scaling group '{asg_name}' does not exist")
+
+def terminate_instance(instanceid):
