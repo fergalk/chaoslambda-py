@@ -9,12 +9,12 @@ asg_client = boto3.client('autoscaling')
 # ----- Functions
 def lambda_handler(event, context):
     ''' Entry point for lambda function. Expects event object in one of the following formats:
-        Kill a random instance in an autoscaling group:
+        terminate a random instance in an autoscaling group:
             {
                 "mode" : "autoscaling"
                 "asg_name" :  name of autoscaling group
             }
-        Kill a random instance in account:
+        terminate a random instance in account:
             {
                 "mode" : "random_instance"
             }
@@ -29,11 +29,11 @@ def lambda_handler(event, context):
     if mode == 'autoscaling':
         # get name of group from event object
         if 'asg_name' in event.keys():
-            return_message = kill_in_asg(event['asg_name'])
+            return_message = terminate_in_asg(event['asg_name'])
         else:
             raise ValueError("Required key 'asg_name' was not found in event object")
     elif mode == 'random_instance':
-        return_message = kill_random()
+        return_message = terminate_random()
     else:
         raise ValueError(f"Unexpected mode '{mode}'")
 
@@ -41,8 +41,8 @@ def lambda_handler(event, context):
       'message': return_message
     }
 
-def kill_random():
-    ''' Kill a random instance with a state of 'running' in AWS account. '''
+def terminate_random():
+    ''' terminate a random instance with a state of 'running' in AWS account. '''
     # get list of all running instance ids
     candidate_instances = get_ec2_instance_ids([{
         'Name' : 'instance-state-name',
@@ -59,9 +59,9 @@ def kill_random():
 
     return f'Terminated random ec2 instance {terminated_instance} from {num_candidates} possible candidates'
 
-def kill_in_asg(asg_name):
-    ''' Kill a random instance in autoscaling group. 
-        Only kill instances that have a LifecycleState of 'InService' and an instance state of 'running'.
+def terminate_in_asg(asg_name):
+    ''' terminate a random instance in autoscaling group. 
+        Only terminate instances that have a LifecycleState of 'InService' and an instance state of 'running'.
         Returns a message for the lambda caller
     '''
     # array to hold instances eligible for termination
