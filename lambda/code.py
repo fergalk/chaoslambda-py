@@ -91,8 +91,7 @@ def get_ec2_instance_ids(filter):
             filter: filter as described in https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.describe_instances
     '''
     # first time so we have no NextToken
-    # TODO remove MaxResults 
-    resp = ec2_client.describe_instances(Filters=filter, MaxResults=5)
+    resp = ec2_client.describe_instances(Filters=filter)
 
     # create list of instance ids to return
     instanceids = _extract_instanceids(resp)
