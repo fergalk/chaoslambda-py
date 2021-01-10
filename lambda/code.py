@@ -126,7 +126,7 @@ def get_ec2_instance_state(instanceid):
               'Name': 'instance-id', 'Values': [instanceid]
             }]
           )['Reservations'][0]['Instances'][0]['State']['Name']
-    # If the instance given by instanceid doesn't exist, we'll get an IndexError. Catch & reraise it as a more helpful exception.
+    # If the instance doesn't exist, we'll get an IndexError. Catch & reraise it as a more helpful exception.
     except IndexError:
         raise RuntimeError(f"EC2 instance '{instanceid}' does not exist")
 
@@ -146,6 +146,8 @@ def terminate_random_ec2_instance(instanceid_list):
     ''' Helper function to terminate random ec2 instance from list of instance ids. Returns id of terminated instance '''
     # pick random instance
     term_instance = choice(instanceid_list)
+    # disable termination protection - idempotent so no problem running on 
+    ec2_client.modify_instance_attribute(InstanceId=term_instance, DisableApiTermination={'Value':False})
     # terminate it
     ec2_client.terminate_instances(InstanceIds=[term_instance])
     # return id

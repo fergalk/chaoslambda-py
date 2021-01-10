@@ -2,7 +2,7 @@
 
 This is a [Chaos Monkey](https://github.com/Netflix/chaosmonkey) implementation for AWS Lambda, written in Python.
 
-Chaos lambda randomly terminates EC2 instances in autoscaling groups.
+Chaos lambda can either terminate random instances in specified auto scaling groups, or random instances in the AWS account.
 
 # TODO
 - deployment script/cloudformation template
