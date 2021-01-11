@@ -1,2 +1,8 @@
 # vscode settings
 .vscode/
+
+# python cache
+__pycache__/
+
+# sample config for testing
+testconf.json
