@@ -66,7 +66,6 @@ def parse_args(args_to_parse):
     parser.add_option('-c', '--config-file', help='path to json config file', dest='config_file', metavar='FILE')
     parser.add_option('-D', '--destroy', help='remove all ChaosLambda components from AWS', dest='destroy', action='store_true')
     parser.add_option('-v', '--verbose', action='store_true', help='debugging output', dest='verbose')
-    # TODO - arg to print cloudformation template to file
 
     # parse - first element in array is options object, second we can ignore
     opts = parser.parse_args(args=args_to_parse)[0]
@@ -105,7 +104,6 @@ def get_conf(input):
     conf_dict = json.loads(input)
 
     # -- linting
-    # TODO - lint cron expressions
     # validate number of keys in dict
     if len(conf_dict.keys()) == 0 :
         log.error(f'No keys found in config file')
