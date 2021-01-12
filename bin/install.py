@@ -107,7 +107,7 @@ def setup_iam_role():
 
 
 def setup_lambda_function(execution_role_arn):
-    ''' Create/update chaoslambda lambda function. Idempotent. '''
+    ''' Create/update chaoslambda lambda function. Idempotent. Returns function ARN. '''
     client = boto3.client('lambda')
 
     # reusable between create_function & update_function_configuration
@@ -132,7 +132,7 @@ def setup_lambda_function(execution_role_arn):
             Publish = True,
             Code = {'ZipFile' : lambda_deployment},
             **function_config
-        )
+        )['FunctionArn']
     else:
         # function does exist, update it
         log.debug(f'Updating configuration for lambda function {lambda_function_name}')
@@ -148,7 +148,7 @@ def setup_lambda_function(execution_role_arn):
             Publish = True
         )
 
-
+    return function_arn
 
 # -- Secondary functions
 def parse_args(args_to_parse):
