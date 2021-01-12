@@ -222,13 +222,13 @@ def get_conf(input):
         # iterate through dicts
         for asg_dict in conf_dict['auto_scaling_group']:
             if sorted(asg_dict.keys()) != sorted(['name', 'cron_expression']):
-                log.error(f'auto_scaling_group {dict_number} in config file malformed')
+                log.error(f'auto_scaling_group {dict_number} in config file is malformed')
                 exit(1)
             # bump counter
             dict_number += 1
 
     # print a debug message
-    log.debug(f'Input file linted successfully')
+    log.debug(f'config file linted successfully')
 
     return conf_dict
 
