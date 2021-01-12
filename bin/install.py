@@ -125,8 +125,8 @@ def setup_lambda_function(execution_role_arn):
     try:
         function_arn = client.get_function(FunctionName=lambda_function_name)['Configuration']['FunctionArn']
     except client.exceptions.ResourceNotFoundException:
-        log.debug(f'Creating lambda function {lambda_function_name}')
         # function doesn't exist, create it
+        log.debug(f'Creating lambda function {lambda_function_name}')
         function_arn = client.create_function(
             FunctionName = lambda_function_name,
             Publish = True,
