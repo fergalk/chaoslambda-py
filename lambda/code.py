@@ -144,6 +144,7 @@ def get_asg_instances(asg_name):
 
 def terminate_random_ec2_instance(instanceid_list):
     ''' Helper function to terminate random ec2 instance from list of instance ids. Returns id of terminated instance '''
+    # TODO - delete volumes?
     # pick random instance
     term_instance = choice(instanceid_list)
     # disable termination protection - idempotent so no problem running on 

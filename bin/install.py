@@ -1,10 +1,18 @@
 #!/usr/bin/env python3
 # -- Global imports
-
 import os
 import json
 import logging
 import sys
+import boto3
+
+# -- Global vars
+# path to iam resources
+iam_path = '/ChaosLambda/'
+# chaoslambda execution role name
+iam_role_name = 'ChaosLambdaExecutionRole'
+# chaoslambda execution policy
+iam_policy_name = 'ChaosLambdaExecutionPolicy'
 
 # -- Core functions
 def main():
@@ -15,6 +23,86 @@ def main():
 
     # get conf from file
     conf = get_conf(readfile(opts.config_file))
+
+    # add IAM components to AWS
+    role_arn = setup_iam_role()
+
+    # setup lambda function
+    setup_lambda_function()
+
+    if 'auto_scaling_group' in conf.keys():
+        pass
+        # TODO
+
+    if 'terminate_random' in conf.keys():
+        pass
+        # TODO
+
+def setup_iam_role():
+    ''' Sets up IAM role in AWS with embedded policy for Chaos Lambda function. Idempotent. Returns role ARN. '''
+    client = boto3.client('iam')
+
+    # delete role policy if it exists
+    try:
+        client.delete_role_policy(RoleName=iam_role_name, PolicyName=iam_policy_name)
+    except client.exceptions.NoSuchEntityException:
+        # swallow
+        pass
+    # delete role if it exists
+    try:
+        client.delete_role(RoleName=iam_role_name)
+    except client.exceptions.NoSuchEntityException:
+        # swallow
+        pass
+
+    # create role
+    log.debug(f'Creating IAM role {iam_role_name}')
+    role_arn = client.create_role(
+        Path = iam_path,
+        RoleName = iam_role_name,
+        Description = 'Lambda execution role for chaoslambda',
+        AssumeRolePolicyDocument=json.dumps({
+            'Version' : '2012-10-17',
+            'Statement' : {
+                'Principal': {'Service': ['lambda.amazonaws.com']},
+                'Effect': 'Allow',
+                'Action': 'sts:AssumeRole'
+            }
+        })
+    )['Role']['Arn']
+
+    # create inline policy
+    log.debug(f'Creating inline policy {iam_policy_name} for IAM role {iam_role_name}')
+    client.put_role_policy(
+        RoleName = iam_role_name,
+        PolicyName = iam_policy_name,
+        PolicyDocument = json.dumps({
+            'Version': '2012-10-17',
+            'Statement': [
+                {
+                    'Effect': 'Allow',
+                    'Action': [
+                        'ec2:DescribeInstances',
+                        'ec2:TerminateInstances',
+                        'ec2:ModifyInstanceAttribute',
+                        'autoscaling:DescribeAutoScalingGroups'
+                    ],
+                    'Resource': [
+                        'arn:aws:ec2:*',
+                        'arn:aws:autoscaling:*'
+                    ]
+                }
+            ]
+        })
+    )
+
+    # return role arn
+    return role_arn
+
+
+def setup_lambda_function():
+    # TODO
+    pass
 
 # -- Secondary functions
 def parse_args(args_to_parse):
@@ -31,12 +119,11 @@ def parse_args(args_to_parse):
     # parse - we only care about the first element in array as the second is our args
     opts = parser.parse_args(args=args_to_parse)[0]
 
-    # validate args
+    # validate values
     if not opts.config_file:
         log.error(f'No config file provided')
         exit(1)
 
-    # return
     return opts
 
 def set_debug(debug):
