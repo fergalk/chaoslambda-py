@@ -18,6 +18,7 @@ iam_policy_name = 'ChaosLambdaExecutionPolicy'
 # chaoslambda lambda function name
 lambda_function_name = 'ChaosLambdaTerminator'
 # location of lambda code file
+# TODO - make path portable
 lambda_code_file = '{scriptdir}\\..\\lambda\\code.py'.format(scriptdir=os.path.dirname(os.path.realpath(__file__)))
 
 # -- Core functions
