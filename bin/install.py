@@ -5,6 +5,8 @@ import json
 import logging
 import sys
 import boto3
+import zipfile
+import tempfile
 
 # -- Global vars
 # path to iam resources
@@ -13,6 +15,10 @@ iam_path = '/ChaosLambda/'
 iam_role_name = 'ChaosLambdaExecutionRole'
 # chaoslambda execution policy
 iam_policy_name = 'ChaosLambdaExecutionPolicy'
+# chaoslambda lambda function name
+lambda_function_name = 'ChaosLambdaTerminator'
+# location of lambda code file
+lambda_code_file = '{scriptdir}\\..\\lambda\\code.py'.format(scriptdir=os.path.dirname(os.path.realpath(__file__)))
 
 # -- Core functions
 def main():
@@ -28,7 +34,7 @@ def main():
     role_arn = setup_iam_role()
 
     # setup lambda function
-    setup_lambda_function()
+    setup_lambda_function(role_arn)
 
     if 'auto_scaling_group' in conf.keys():
         pass
@@ -100,9 +106,49 @@ def setup_iam_role():
     return role_arn
 
 
-def setup_lambda_function():
-    # TODO
-    pass
+def setup_lambda_function(execution_role_arn):
+    ''' Create/update chaoslambda lambda function. Idempotent. '''
+    client = boto3.client('lambda')
+
+    # reusable between create_function & update_function_configuration
+    function_config = {
+        'Runtime' : 'python3.8',
+        'Role' : execution_role_arn,
+        'Handler' : 'lambda_function.lambda_handler',
+        'Description' : 'Terminator function for chaos lambda. See https://github.com/fergalk/chaoslambda-py for more information.',
+        'Timeout' : 5
+    }
+
+    # deployment package for code
+    lambda_deployment = create_deployment_package(lambda_code_file)
+
+    try:
+        function_arn = client.get_function(FunctionName=lambda_function_name)['Configuration']['FunctionArn']
+    except client.exceptions.ResourceNotFoundException:
+        log.debug(f'Creating lambda function {lambda_function_name}')
+        # function doesn't exist, create it
+        function_arn = client.create_function(
+            FunctionName = lambda_function_name,
+            Publish = True,
+            Code = {'ZipFile' : lambda_deployment},
+            **function_config
+        )
+    else:
+        # function does exist, update it
+        log.debug(f'Updating configuration for lambda function {lambda_function_name}')
+        client.update_function_configuration(
+            FunctionName = function_arn,
+            **function_config
+        )
+        # update code
+        log.debug(f'Updating code for lambda function {lambda_function_name}')
+        client.update_function_code(
+            FunctionName = function_arn,
+            ZipFile = lambda_deployment,
+            Publish = True
+        )
+
+
 
 # -- Secondary functions
 def parse_args(args_to_parse):
@@ -191,6 +237,33 @@ def readfile(filename):
     fo = open(filename, 'r')
     contents = fo.read()
     fo.close()
+    return contents
+
+def create_deployment_package(code_path):
+    ''' Returns a byte stream representing the lambda function code in code_path as a zip file. Renames the lambda function code to lambda_function.py '''
+    # -- zip files
+    # generate temporary zip file name - portable
+    zip_file_name = '{dirname}{path_sep}{filename}.zip'.format(
+        dirname = tempfile._get_default_tempdir(),
+        path_sep = os.path.sep,
+        filename = next(tempfile._get_candidate_names())
+    )
+    # create archive
+    zip = zipfile.ZipFile(zip_file_name, mode='w')
+    # add file to archive
+    zip.write(code_path, arcname='lambda_function.py')
+    # close
+    zip.close()
+
+    # -- read in file
+    fo = open(zip_file_name, 'rb')
+    contents = fo.read()
+    fo.close()
+    
+    # -- delete file
+    os.remove(zip_file_name)
+
+    # return filename
     return contents
 
 # -- Setup logging
