@@ -39,7 +39,7 @@ def test_get_conf_invalid_key():
         'auto_scaling_group' : [
             {'name': 'somerandomgroup'}
         ],
-        'terminate_random' : ['0 9 * * *'],
+        'random' : ['0 9 * * *'],
         'thiskeydoesnotbelong':'here'
     })
     
@@ -59,7 +59,7 @@ def test_get_conf_valid_bad_asg():
         'auto_scaling_group' : [
             {'name': 'somerandomgroup'}
         ],
-        'terminate_random' : ['0 9 * * *']
+        'random' : ['0 9 * * *']
     })
     
     with pytest.raises(SystemExit):
@@ -71,7 +71,7 @@ def test_get_conf_valid():
         'auto_scaling_group' : [
             {'name': 'somerandomgroup', 'cron_expression': '0 9 * * *'}
         ],
-        'terminate_random' : ['0 9 * * *']
+        'random' : ['0 9 * * *']
     })
     
-    assert install.get_conf(conf)['terminate_random'][0] == '0 9 * * *'
+    assert install.get_conf(conf)['random'][0] == '0 9 * * *'

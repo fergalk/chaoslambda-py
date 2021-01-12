@@ -5,153 +5,50 @@ import json
 import logging
 import sys
 import boto3
-import zipfile
 import tempfile
+import zipfile
+
+
+# TODO - create log group for lambda function
 
 # -- Global vars
-# path to iam resources
-iam_path = '/ChaosLambda/'
 # chaoslambda execution role name
 iam_role_name = 'ChaosLambdaExecutionRole'
-# chaoslambda execution policy
-iam_policy_name = 'ChaosLambdaExecutionPolicy'
 # chaoslambda lambda function name
-lambda_function_name = 'ChaosLambdaTerminator'
+lambda_function_name = 'ChaosLambda'
 # location of lambda code file
-# TODO - make path portable
-lambda_code_file = '{scriptdir}\\..\\lambda\\code.py'.format(scriptdir=os.path.dirname(os.path.realpath(__file__)))
+lambda_code_file = '{scriptdir}{path_sep}..{path_sep}lambda{path_sep}code.py'.format(
+    scriptdir=os.path.dirname(os.path.realpath(__file__)),
+    path_sep = os.path.sep
+)
+# information URL - added to AWS resources
+info_url = 'https://github.com/fergalk/chaoslambda-py'
+# cloudformation stack name
+cf_stack_name = 'ChaosLambdaDeployment'
 
 # -- Core functions
 def main():
     # get args from command line
     opts = parse_args(sys.argv)
+
     # set debug if we want it
     set_debug(opts.verbose)
 
     # get conf from file
-    conf = get_conf(readfile(opts.config_file))
+    conf = get_conf(read_file(opts.config_file))
 
-    # add IAM components to AWS
-    role_arn = setup_iam_role()
+    # generate cloudformation template
+    cf_template = gen_cloudformation_template(conf)
 
-    # setup lambda function
-    setup_lambda_function(role_arn)
+    # upload cloudformation template
+    upload_cloudformation_template(cf_template, cf_stack_name)
 
-    if 'auto_scaling_group' in conf.keys():
-        pass
-        # TODO
+    # upload lambda code
+    upload_lambda_code()
 
-    if 'terminate_random' in conf.keys():
-        pass
-        # TODO
+    # log a message
+    log.info('Deployment successful!')
 
-def setup_iam_role():
-    ''' Sets up IAM role in AWS with embedded policy for Chaos Lambda function. Idempotent. Returns role ARN. '''
-    client = boto3.client('iam')
-
-    # delete role policy if it exists
-    try:
-        client.delete_role_policy(RoleName=iam_role_name, PolicyName=iam_policy_name)
-    except client.exceptions.NoSuchEntityException:
-        # swallow
-        pass
-    # delete role if it exists
-    try:
-        client.delete_role(RoleName=iam_role_name)
-    except client.exceptions.NoSuchEntityException:
-        # swallow
-        pass
-
-    # create role
-    log.debug(f'Creating IAM role {iam_role_name}')
-    role_arn = client.create_role(
-        Path = iam_path,
-        RoleName = iam_role_name,
-        Description = 'Lambda execution role for chaoslambda',
-        AssumeRolePolicyDocument=json.dumps({
-            'Version' : '2012-10-17',
-            'Statement' : {
-                'Principal': {'Service': ['lambda.amazonaws.com']},
-                'Effect': 'Allow',
-                'Action': 'sts:AssumeRole'
-            }
-        })
-    )['Role']['Arn']
-
-    # create inline policy
-    log.debug(f'Creating inline policy {iam_policy_name} for IAM role {iam_role_name}')
-    client.put_role_policy(
-        RoleName = iam_role_name,
-        PolicyName = iam_policy_name,
-        PolicyDocument = json.dumps({
-            'Version': '2012-10-17',
-            'Statement': [
-                {
-                    'Effect': 'Allow',
-                    'Action': [
-                        'ec2:DescribeInstances',
-                        'ec2:TerminateInstances',
-                        'ec2:ModifyInstanceAttribute',
-                        'autoscaling:DescribeAutoScalingGroups'
-                    ],
-                    'Resource': [
-                        'arn:aws:ec2:*',
-                        'arn:aws:autoscaling:*'
-                    ]
-                }
-            ]
-        })
-    )
-
-    # return role arn
-    return role_arn
-
-
-def setup_lambda_function(execution_role_arn):
-    ''' Create/update chaoslambda lambda function. Idempotent. Returns function ARN. '''
-    client = boto3.client('lambda')
-
-    # reusable between create_function & update_function_configuration
-    function_config = {
-        'Runtime' : 'python3.8',
-        'Role' : execution_role_arn,
-        'Handler' : 'lambda_function.lambda_handler',
-        'Description' : 'Terminator function for chaos lambda. See https://github.com/fergalk/chaoslambda-py for more information.',
-        'Timeout' : 5
-    }
-
-    # deployment package for code
-    lambda_deployment = create_deployment_package(lambda_code_file)
-
-    try:
-        function_arn = client.get_function(FunctionName=lambda_function_name)['Configuration']['FunctionArn']
-    except client.exceptions.ResourceNotFoundException:
-        # function doesn't exist, create it
-        log.debug(f'Creating lambda function {lambda_function_name}')
-        function_arn = client.create_function(
-            FunctionName = lambda_function_name,
-            Publish = True,
-            Code = {'ZipFile' : lambda_deployment},
-            **function_config
-        )['FunctionArn']
-    else:
-        # function does exist, update it
-        log.debug(f'Updating configuration for lambda function {lambda_function_name}')
-        client.update_function_configuration(
-            FunctionName = function_arn,
-            **function_config
-        )
-        # update code
-        log.debug(f'Updating code for lambda function {lambda_function_name}')
-        client.update_function_code(
-            FunctionName = function_arn,
-            ZipFile = lambda_deployment,
-            Publish = True
-        )
-
-    return function_arn
-
-# -- Secondary functions
 def parse_args(args_to_parse):
     ''' Function to parse args. Returns an optparse options object '''
     # local imports
@@ -162,24 +59,19 @@ def parse_args(args_to_parse):
     # add options
     parser.add_option('-c', '--config-file', help='path to json config file', dest='config_file', metavar='FILE')
     parser.add_option('-v', '--verbose', action='store_true', help='debugging output', dest='verbose')
+    # TODO - arg to print cloudformation to file
+    # TODO - option to delete
 
     # parse - we only care about the first element in array as the second is our args
     opts = parser.parse_args(args=args_to_parse)[0]
 
     # validate values
+    # TODO - do not require
     if not opts.config_file:
         log.error(f'No config file provided')
         exit(1)
 
     return opts
-
-def set_debug(debug):
-    ''' If debug is true, set global log level to debug, otherwise set to info. '''
-    if debug:
-        log.setLevel(logging.DEBUG)
-    else:
-        log.setLevel(logging.INFO)
-
 
 def get_conf(input):
     ''' Decode & lint the config from the string given by input. Expected contents (json):
@@ -191,19 +83,20 @@ def get_conf(input):
                 },
                 ...
             ],
-            "terminate_random" : [
+            "random" : [
                 cron_expression,
                 cron_expression
                 ...
             ]
         }
-        At least one of auto_scaling_group & terminate_random is required.
+        At least one of auto_scaling_group & random is required.
         Returns data from file as a dict.
     '''
     # decode json       
     conf_dict = json.loads(input)
 
     # -- linting
+    # TODO - lint cron expressions
     # validate number of keys in dict
     if len(conf_dict.keys()) == 0 :
         log.error(f'No keys found in config file')
@@ -211,7 +104,7 @@ def get_conf(input):
 
     # validate that all keys in the dict are valid
     for key in conf_dict.keys():
-        if not key in ('auto_scaling_group', 'terminate_random'):
+        if not key in ('auto_scaling_group', 'random'):
             log.error(f'Unknown key {key} in config file')
             exit(1)
 
@@ -228,12 +121,215 @@ def get_conf(input):
             dict_number += 1
 
     # print a debug message
-    log.debug(f'config file linted successfully')
+    log.debug(f'Config file linted successfully')
 
     return conf_dict
 
+def gen_cloudformation_template(conf):
+    ''' Generate a cloudformation template to create our AWS components. Returns template as string. '''
+    # create skeleton from static components
+    template = {
+        'AWSTemplateFormatVersion' : '2010-09-09',
+        'Description' : f'Deploy components for ChaosLambda. More info at {info_url}',
+        'Resources' : {
+            'IAMRole' : {
+                'Type' : 'AWS::IAM::Role',
+                'Properties' : {
+                    'AssumeRolePolicyDocument' : {
+                        'Version' : '2012-10-17',
+                        'Statement' : {
+                            'Principal': {'Service': ['lambda.amazonaws.com']},
+                            'Effect': 'Allow',
+                            'Action': 'sts:AssumeRole'
+                        }
+                    },
+                    'Description' : f'Execution role for ChaosLambda. More info at {info_url}',
+                    'ManagedPolicyArns' : [ 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole' ],
+                    'RoleName' : iam_role_name,
+                    'Policies' : [{
+                        'PolicyName' : 'ChaosLambdaPolicy',
+                        'PolicyDocument' : {
+                            'Version': '2012-10-17',
+                            'Statement': [
+                                {
+                                    'Effect': 'Allow',
+                                    'Action': [
+                                        'ec2:DescribeInstances',
+                                        'ec2:TerminateInstances',
+                                        'ec2:ModifyInstanceAttribute',
+                                        'autoscaling:DescribeAutoScalingGroups'
+                                    ],
+                                    'Resource': [
+                                        'arn:aws:ec2:*',
+                                        'arn:aws:autoscaling:*'
+                                    ]
+                                }
+                            ]
+                        }
+                    }]
+                }
+            },
+            'LambdaFunction' : {
+                'Type' : 'AWS::Lambda::Function',
+                'Properties' : {
+                    'Code': { 'ZipFile' : 'pass' }, # dummy contents, upload full contents once stack creation is complete
+                    'Description' : f'Lambda function for ChaosLambda. More info at {info_url}',
+                    'FunctionName' : lambda_function_name,
+                    'Handler' : 'index.lambda_handler',
+                    'Timeout' : 60,
+                    'Role' : { 'Fn::GetAtt' : ['IAMRole', 'Arn'] },
+                    'Runtime' : 'python3.8'
+                }
+            },
+            'LambdaLogGroup' : {
+                'Type' : 'AWS::Logs::LogGroup',
+                'Properties' : {
+                    'LogGroupName' : '/aws/lambda/ChaosLambdaTerminator',
+                    'RetentionInDays' : 1
+                }
+            }
+        }
+    }
+
+    # -- Generate dynamic components
+    # counter for generating dynamic resource & rule names. 
+    res_counter = 0
+
+    # add any auto scaling groups
+    if 'auto_scaling_group' in conf.keys():
+        for group in conf['auto_scaling_group']:
+            # name of asg
+            groupname = group['name']
+            # schedule for rule
+            cron_expr = group['cron_expression']
+            # add resource to cf template
+            log.debug(f'Adding cloudwatch rule for asg {groupname}, schedule cron({cron_expr})')
+            template['Resources'][f'ScheduledRule{res_counter}'] = {
+                'Type' : 'AWS::Events::Rule',
+                'Properties' : {
+                    'Description' : f'Execution scheduler for ChaosLambda. Terminates random EC2 instance in {groupname} on schedule cron({cron_expr}). More info at {info_url}',
+                    'Name' : f'ChaosLambdaScheduler-{res_counter}',
+                    'ScheduleExpression' : f'cron({cron_expr})',
+                    'State' : 'ENABLED',
+                    'Targets' : [{
+                        'Arn' : { 'Fn::GetAtt' : ['LambdaFunction', 'Arn'] },
+                        'Id' : 'execute_lambda',
+                        'Input' : json.dumps({
+                            'mode' : 'autoscaling',
+                            'asg_name' : groupname
+                        })
+                    }]
+                }
+            }
+            # bump
+            res_counter += 1
+
+    # add rules for terminating random instance in account
+    if 'random' in conf.keys():
+        for cron_expr in conf['random']:
+            # add resource to cf template
+            log.debug(f'Adding cloudwatch rule for random instance, schedule cron({cron_expr})')
+            template['Resources'][f'ScheduledRule{res_counter}'] = {
+                'Type' : 'AWS::Events::Rule',
+                'Properties' : {
+                    'Description' : f'Execution scheduler for ChaosLambda. Terminates random EC2 instance in account on schedule cron({cron_expr}). More info at {info_url}',
+                    'Name' : f'ChaosLambdaScheduler-{res_counter}',
+                    'ScheduleExpression' : f'cron({cron_expr})',
+                    'State' : 'ENABLED',
+                    'Targets' : [{
+                        'Arn' : { 'Fn::GetAtt' : ['LambdaFunction', 'Arn'] },
+                        'Id' : 'execute_lambda',
+                        'Input' : json.dumps({'mode' : 'random'})
+                    }]
+                }
+            }
+            # bump
+            res_counter += 1
+
+    return json.dumps(template)
+
+def upload_cloudformation_template(template, name):
+    ''' Creates/updates cloudformation template given by name. Expects template as string in json format. '''
+    # create boto3 client
+    client = boto3.client('cloudformation')
+
+    # parameters for update_stack/create_stack
+    stack_params = {
+        'StackName' : name,
+        'TemplateBody' : template,
+        'Capabilities' : ('CAPABILITY_IAM', 'CAPABILITY_NAMED_IAM')
+    }
+
+    # parameters for boto3 waiters
+    wait_params = {
+        'StackName' : name,
+        'WaiterConfig' : {'Delay':2}
+    }
+
+    # check if stack exists, and what its state is
+    try:
+        if client.describe_stacks(StackName=name)['Stacks'][0]['StackStatus'] in ('ROLLBACK_COMPLETE', 'DELETE_COMPLETE'):
+            log.debug(f'Cloudformation stack {name} already exists, but state is ROLLBACK_COMPLETE or DELETE_COMPLETE')
+            delete_stack = True
+            # we're deleting it anyway, so set to false
+            stack_exists = False
+        else:
+            log.debug(f'Cloudformation stack {name} already exists and does not require deletion')
+            delete_stack = False
+            stack_exists = True
+    except client.exceptions.ClientError:
+        log.debug(f'Cloudformation stack {name} does not exist')
+        stack_exists = False
+    else:
+        if delete_stack:
+            # if the stack state is ROLLBACK_COMPLETE or DELETE_COMPLETE, delete it first
+            log.info(f'Deleting stack {name} as its state is ROLLBACK_COMPLETE or DELETE_COMPLETE')
+            client.delete_stack(StackName=name)
+            log.debug('Waiting for stack deletion to complete')
+            client.get_waiter('stack_delete_complete').wait(**wait_params)
+            log.info('Stack deletion completed')
+
+    # if our stack exists, update it, otherwise create it
+    if stack_exists:
+        log.info(f'Updating cloudformation stack {name}')
+        try:
+            client.update_stack(**stack_params)
+        except client.exceptions.ClientError as ex:
+            # if there are no updates to be made, we get a ClientError containing 'No updates are to be performed'. Check our exception contains this string, it not re-raise it.
+            if 'No updates are to be performed' in str(ex):
+                log.info('Cloudformation stack update cancelled as no updates are required')
+            else:
+                log.debug('Cloudformation stack update failed with unknown ClientError')
+                raise(ex)
+        else:
+            log.debug('Waiting for stack update to complete')
+            client.get_waiter('stack_update_complete').wait(**wait_params)
+            log.info('Stack update complete')
+    else:
+        log.info(f'Creating cloudformation stack {name}')
+        client.create_stack(**stack_params)
+        log.debug('Waiting for stack create to complete')
+        client.get_waiter('stack_create_complete').wait(**wait_params)
+        log.info('Stack creation complete')
+
+def upload_lambda_code():
+    ''' Uploads the lambda code in lambda_code_file to lambda function lambda_function_name '''
+    log.info(f'Updating code for lambda function {lambda_function_name} to code in {lambda_code_file}')
+    boto3.client('lambda').update_function_code(
+        FunctionName = lambda_function_name,
+        ZipFile = create_deployment_package(lambda_code_file),
+        Publish = True
+    )
+
 # -- Helper functions
-def readfile(filename):
+def set_debug(debug):
+    ''' If debug is true, set global log level to debug, otherwise set to info. '''
+    if debug:
+        log.setLevel(logging.DEBUG)
+    else:
+        log.setLevel(logging.INFO)
+
+def read_file(filename):
     ''' Open file, read, close file, return contents '''
     fo = open(filename, 'r')
     contents = fo.read()
@@ -256,7 +352,7 @@ def create_deployment_package(code_path):
     # close
     zip.close()
 
-    # -- read in file
+    # -- read file
     fo = open(zip_file_name, 'rb')
     contents = fo.read()
     fo.close()
@@ -267,10 +363,10 @@ def create_deployment_package(code_path):
     # return filename
     return contents
 
+
 # -- Setup logging
 logging.basicConfig(format='%(levelname)s: %(message)s')
 log = logging.getLogger('global')
-
 
 # -- Run main
 if __name__ == '__main__':

@@ -5,9 +5,6 @@ This is a [Chaos Monkey](https://github.com/Netflix/chaosmonkey) implementation 
 Chaos lambda can either terminate random instances in specified auto scaling groups, or random instances in the AWS account.
 
 # TODO
-- deployment script/cloudformation template
-    - deploy lambda
-    - cloudwatch rule to trigger
+- deployment script
     - cloudwatch log group
-- testing
 - add cloudwatch logging on success/failure
