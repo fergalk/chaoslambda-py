@@ -30,20 +30,30 @@ def main():
     # set debug if we want it
     set_debug(opts.verbose)
 
-    # get conf from file
-    conf = get_conf(read_file(opts.config_file))
+    if opts.destroy:
+        # user specified -D, delete cf stack
+        log.info('Destroying AWS resources')
+        if delete_cloudformation_stack(cf_stack_name):
+            # stack existed
+            log.info('Removed all AWS resources')
+            exit(0)
+        else:
+            log.warning('There were no resources to remove')
+            exit(1)
 
-    # generate cloudformation template
-    cf_template = gen_cloudformation_template(conf)
-
-    # upload cloudformation template
-    upload_cloudformation_template(cf_template, cf_stack_name)
-
-    # upload lambda code
-    upload_lambda_code()
-
-    # log a message
-    log.info('Deployment successful!')
+    else:
+        # user didn't specify -D, create/update resources
+        # get conf from file
+        conf = get_conf(read_file(opts.config_file))
+        # generate cloudformation template
+        cf_template = gen_cloudformation_template(conf)
+        # upload cloudformation template
+        upload_cloudformation_template(cf_template, cf_stack_name)
+        # upload lambda code
+        upload_lambda_code()
+        # log a message
+        log.info('Deployment successful!')
+        exit(0)
 
 def parse_args(args_to_parse):
     ''' Function to parse args. Returns an optparse options object '''
@@ -54,15 +64,19 @@ def parse_args(args_to_parse):
     parser = OptionParser()
     # add options
     parser.add_option('-c', '--config-file', help='path to json config file', dest='config_file', metavar='FILE')
+    parser.add_option('-D', '--destroy', help='remove all ChaosLambda components from AWS', dest='destroy', action='store_true')
     parser.add_option('-v', '--verbose', action='store_true', help='debugging output', dest='verbose')
-    # TODO - arg to print cloudformation to file
-    # TODO - option to delete
+    # TODO - arg to print cloudformation template to file
 
-    # parse - first element in array is 
+    # parse - first element in array is options object, second we can ignore
     opts = parser.parse_args(args=args_to_parse)[0]
 
-    # validate values
-    if not opts.config_file:
+    # -- validate args
+    if opts.destroy and opts.config_file:
+        log.error('Options -c and -d are mutually exclusive')
+        exit(1)
+
+    if (not opts.config_file) and (not opts.destroy) :
         log.error(f'No config file provided')
         exit(1)
 
@@ -198,7 +212,7 @@ def gen_cloudformation_template(conf):
             # schedule for rule
             cron_expr = group['cron_expression']
             # add resource to cf template
-            log.debug(f'Adding cloudwatch rule for asg {groupname}, schedule cron({cron_expr})')
+            log.debug(f'Adding cloudwatch rule for asg {groupname}, schedule cron({cron_expr}) to cloudformation template')
             template['Resources'][f'ScheduledRule{res_counter}'] = {
                 'Type' : 'AWS::Events::Rule',
                 'Properties' : {
@@ -223,7 +237,7 @@ def gen_cloudformation_template(conf):
     if 'random' in conf.keys():
         for cron_expr in conf['random']:
             # add resource to cf template
-            log.debug(f'Adding cloudwatch rule for random instance, schedule cron({cron_expr})')
+            log.debug(f'Adding cloudwatch rule for random instance, schedule cron({cron_expr}) to cloudformation template')
             template['Resources'][f'ScheduledRule{res_counter}'] = {
                 'Type' : 'AWS::Events::Rule',
                 'Properties' : {
@@ -279,9 +293,7 @@ def upload_cloudformation_template(template, name):
         if delete_stack:
             # if the stack state is ROLLBACK_COMPLETE or DELETE_COMPLETE, delete it first
             log.info(f'Deleting stack {name} as its state is ROLLBACK_COMPLETE or DELETE_COMPLETE')
-            client.delete_stack(StackName=name)
-            log.debug('Waiting for stack deletion to complete')
-            client.get_waiter('stack_delete_complete').wait(**wait_params)
+            delete_cloudformation_stack(name)
             log.info('Stack deletion completed')
 
     # if our stack exists, update it, otherwise create it
@@ -290,12 +302,8 @@ def upload_cloudformation_template(template, name):
         try:
             client.update_stack(**stack_params)
         except client.exceptions.ClientError as ex:
-            # if there are no updates to be made, we get a ClientError containing 'No updates are to be performed'. Check our exception contains this string, it not re-raise it.
-            if 'No updates are to be performed' in str(ex):
-                log.info('Cloudformation stack update cancelled as no updates are required')
-            else:
-                log.debug('Cloudformation stack update failed with unknown ClientError')
-                raise(ex)
+            # no updates to be made
+            log.info('Cloudformation stack update rejected as no updates are required')
         else:
             log.debug('Waiting for stack update to complete')
             client.get_waiter('stack_update_complete').wait(**wait_params)
@@ -359,6 +367,23 @@ def create_deployment_package(code_path):
     # return filename
     return contents
 
+def delete_cloudformation_stack(stack_name):
+    ''' Delete cloudformation stack given by cf_stack_name and wait for deletion to complete. Returns True if stack deleted, False if stack didn't exist. '''
+    client = boto3.client('cloudformation')
+
+    try:
+        # check if stack exists
+        client.describe_stacks(StackName=stack_name)
+    except client.exceptions.ClientError:
+        # doesn't exist
+        log.debug(f'Cf stack {stack_name} does not exist')
+        return False
+    else:
+        # does exist
+        client.delete_stack(StackName=stack_name)
+        log.debug(f'Waiting for cf stack {stack_name} deletion to complete')
+        client.get_waiter('stack_delete_complete').wait(StackName=stack_name, WaiterConfig = {'Delay':2})
+        return True
 
 # -- Setup logging
 logging.basicConfig(format='%(levelname)s: %(message)s')
