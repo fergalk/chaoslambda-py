@@ -9,8 +9,6 @@ import tempfile
 import zipfile
 
 
-# TODO - create log group for lambda function
-
 # -- Global vars
 # chaoslambda execution role name
 iam_role_name = 'ChaosLambdaExecutionRole'
