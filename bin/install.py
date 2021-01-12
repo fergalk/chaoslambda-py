@@ -5,8 +5,6 @@ import json
 import logging
 import sys
 import boto3
-import tempfile
-import zipfile
 
 
 # -- Global vars
@@ -16,7 +14,7 @@ iam_role_name = 'ChaosLambdaExecutionRole'
 lambda_function_name = 'ChaosLambda'
 # location of lambda code file
 lambda_code_file = '{scriptdir}{path_sep}..{path_sep}lambda{path_sep}code.py'.format(
-    scriptdir=os.path.dirname(os.path.realpath(__file__)),
+    scriptdir = os.path.dirname(os.path.realpath(__file__)), # directory of install script
     path_sep = os.path.sep
 )
 # information URL - added to AWS resources
@@ -60,11 +58,10 @@ def parse_args(args_to_parse):
     # TODO - arg to print cloudformation to file
     # TODO - option to delete
 
-    # parse - we only care about the first element in array as the second is our args
+    # parse - first element in array is 
     opts = parser.parse_args(args=args_to_parse)[0]
 
     # validate values
-    # TODO - do not require
     if not opts.config_file:
         log.error(f'No config file provided')
         exit(1)
@@ -336,6 +333,7 @@ def read_file(filename):
 
 def create_deployment_package(code_path):
     ''' Returns a byte stream representing the lambda function code in code_path as a zip file. Renames the lambda function code to lambda_function.py '''
+    import tempfile, zipfile
     # -- zip files
     # generate temporary zip file name - portable
     zip_file_name = '{dirname}{path_sep}{filename}.zip'.format(
