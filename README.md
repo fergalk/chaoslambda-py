@@ -19,6 +19,7 @@ Chaos lambda can either terminate random instances in specified auto scaling gro
 # enhancement TODOs
 - lambda function
     - add cloudwatch logging on success/failure
+    - catch & report all exceptions
     - skip tagged resources
 - deployment script
     - cloudwatch log group for cleaner logging
