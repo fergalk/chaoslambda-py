@@ -1,8 +1,9 @@
 # vscode settings
 .vscode/
 
-# python cache
+# python caches
 __pycache__/
+.pytest_cache/
 
 # sample config for testing
 testconf.json
