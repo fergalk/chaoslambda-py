@@ -7,7 +7,7 @@ ec2_client = boto3.client('ec2')
 asg_client = boto3.client('autoscaling')
 
 # ----- Functions
-def lambda_handler(event, context):
+def handler(event, context):
     ''' Entry point for lambda function. Expects input object in one of the following formats:
         terminate a random instance in an autoscaling group:
             {

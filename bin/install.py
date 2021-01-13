@@ -182,7 +182,7 @@ def gen_cloudformation_template(conf):
                     'Code': { 'ZipFile' : 'pass' }, # dummy contents, upload full contents once stack creation is complete
                     'Description' : f'Lambda function for ChaosLambda. More info at {info_url}',
                     'FunctionName' : lambda_function_name,
-                    'Handler' : 'index.lambda_handler',
+                    'Handler' : 'code.handler',
                     'Timeout' : 60,
                     'Role' : { 'Fn::GetAtt' : ['IAMRole', 'Arn'] },
                     'Runtime' : 'python3.8'
@@ -338,7 +338,7 @@ def read_file(filename):
     return contents
 
 def create_deployment_package(code_path):
-    ''' Returns a byte stream representing the lambda function code in code_path as a zip file. Renames the lambda function code to lambda_function.py '''
+    ''' Returns a byte stream representing the lambda function code in code_path as a zip file. Renames the lambda function code to code.py '''
     import tempfile, zipfile
     # -- zip files
     # generate temporary zip file name - portable
@@ -350,7 +350,7 @@ def create_deployment_package(code_path):
     # create archive
     zip = zipfile.ZipFile(zip_file_name, mode='w')
     # add file to archive
-    zip.write(code_path, arcname='lambda_function.py')
+    zip.write(code_path, arcname='code.py')
     # close
     zip.close()
 
