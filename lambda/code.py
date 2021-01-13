@@ -8,7 +8,7 @@ asg_client = boto3.client('autoscaling')
 
 # ----- Functions
 def lambda_handler(event, context):
-    ''' Entry point for lambda function. Expects event object in one of the following formats:
+    ''' Entry point for lambda function. Expects input object in one of the following formats:
         terminate a random instance in an autoscaling group:
             {
                 "mode" : "autoscaling"
@@ -20,18 +20,18 @@ def lambda_handler(event, context):
             }
     '''
 
-    # check we have a 'mode' in our event object
+    # check we have a 'mode' in our input object
     if not 'mode' in event.keys():
-        raise ValueError("Required key 'mode' was not found in event object")
+        raise ValueError("Required key 'mode' was not found in input object")
 
     # select function based on 'mode'
     mode = event['mode']
     if mode == 'autoscaling':
-        # get name of group from event object
+        # get name of group from input object
         if 'asg_name' in event.keys():
             return_message = terminate_in_asg(event['asg_name'])
         else:
-            raise ValueError("Required key 'asg_name' was not found in event object")
+            raise ValueError("Required key 'asg_name' was not found in input object")
     elif mode == 'random_instance':
         return_message = terminate_random()
     else:
@@ -147,7 +147,7 @@ def terminate_random_ec2_instance(instanceid_list):
     # TODO - get list of volumes before terminate, terminate them if they exist after
     # pick random instance
     term_instance = choice(instanceid_list)
-    # disable termination protection - idempotent so no problem running on 
+    # disable termination protection - idempotent
     ec2_client.modify_instance_attribute(InstanceId=term_instance, DisableApiTermination={'Value':False})
     # terminate it
     ec2_client.terminate_instances(InstanceIds=[term_instance])
