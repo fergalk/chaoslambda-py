@@ -8,8 +8,6 @@ import boto3
 
 
 # -- Global vars
-# chaoslambda execution role name
-iam_role_name = 'ChaosLambdaExecutionRole'
 # chaoslambda lambda function name
 lambda_function_name = 'ChaosLambda'
 # location of lambda code file
@@ -139,20 +137,21 @@ def gen_cloudformation_template(conf):
         'AWSTemplateFormatVersion' : '2010-09-09',
         'Description' : f'Deploy components for ChaosLambda. More info at {info_url}',
         'Resources' : {
-            'IAMRole' : {
+            'LambdaRole' : {
                 'Type' : 'AWS::IAM::Role',
                 'Properties' : {
                     'AssumeRolePolicyDocument' : {
-                        'Version' : '2012-10-17',
-                        'Statement' : {
-                            'Principal': {'Service': ['lambda.amazonaws.com']},
+                        'Version': '2012-10-17',
+                        'Statement': [{
                             'Effect': 'Allow',
+                            'Principal': {
+                                'Service': 'lambda.amazonaws.com'
+                            },
                             'Action': 'sts:AssumeRole'
-                        }
-                    },
+                        }]},
                     'Description' : f'Execution role for ChaosLambda. More info at {info_url}',
                     'ManagedPolicyArns' : [ 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole' ],
-                    'RoleName' : iam_role_name,
+                    'RoleName' : 'ChaosLambdaExecutionRole',
                     'Policies' : [{
                         'PolicyName' : 'ChaosLambdaPolicy',
                         'PolicyDocument' : {
@@ -167,8 +166,7 @@ def gen_cloudformation_template(conf):
                                         'autoscaling:DescribeAutoScalingGroups'
                                     ],
                                     'Resource': [
-                                        'arn:aws:ec2:*',
-                                        'arn:aws:autoscaling:*'
+                                        '*'
                                     ]
                                 }
                             ]
@@ -184,17 +182,18 @@ def gen_cloudformation_template(conf):
                     'FunctionName' : lambda_function_name,
                     'Handler' : 'code.handler',
                     'Timeout' : 60,
-                    'Role' : { 'Fn::GetAtt' : ['IAMRole', 'Arn'] },
+                    'Role' : { 'Fn::GetAtt' : ['LambdaRole', 'Arn'] },
                     'Runtime' : 'python3.8'
                 }
             },
-            'LambdaLogGroup' : {
-                'Type' : 'AWS::Logs::LogGroup',
+            'LambdaEventPermission' : {
+                'Type' : 'AWS::Lambda::Permission',
                 'Properties' : {
-                    'LogGroupName' : '/aws/lambda/ChaosLambdaTerminator',
-                    'RetentionInDays' : 1
+                    'Action' : 'lambda:InvokeFunction',
+                    'FunctionName' : {'Ref':'LambdaFunction'},
+                    'Principal' : 'events.amazonaws.com'
                 }
-            }
+            },
         }
     }
 
@@ -299,7 +298,7 @@ def upload_cloudformation_template(template, name):
         log.info(f'Updating cloudformation stack {name}')
         try:
             client.update_stack(**stack_params)
-        except client.exceptions.ClientError as ex:
+        except client.exceptions.ClientError:
             # no updates to be made
             log.info('Cloudformation stack update rejected as no updates are required')
         else:
