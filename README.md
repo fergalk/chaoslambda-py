@@ -9,7 +9,6 @@ Chaos lambda can either terminate random instances in specified auto scaling gro
     - add option to print cloudformation template
     - allow runs without config file, or with an empty config file
     - add dry run option
-    - lint cron expressions in config file
 - documentation
     - high level overview
     - deployment
