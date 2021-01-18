@@ -45,6 +45,9 @@ def main():
         conf = get_conf(read_file(opts.config_file))
         # generate cloudformation template
         cf_template = gen_cloudformation_template(conf)
+        # if -T specified, print our cloudformation template 
+        if opts.template_out:
+            write_file(opts.template_out, cf_template)
         # upload cloudformation template
         upload_cloudformation_template(cf_template, cf_stack_name)
         # upload lambda code
@@ -62,6 +65,7 @@ def parse_args(args_to_parse):
     parser = OptionParser()
     # add options
     parser.add_option('-c', '--config-file', help='path to json config file', dest='config_file', metavar='FILE')
+    parser.add_option('-T', '--template-out', help='print generated cloudformation template to file', dest='template_out', metavar='FILE')
     parser.add_option('-D', '--destroy', help='remove all ChaosLambda components from AWS', dest='destroy', action='store_true')
     parser.add_option('-v', '--verbose', action='store_true', help='debugging output', dest='verbose')
 
@@ -71,6 +75,10 @@ def parse_args(args_to_parse):
     # -- validate args
     if opts.destroy and opts.config_file:
         log.error('Options -c and -d are mutually exclusive')
+        exit(1)
+
+    if opts.destroy and opts.template_out:
+        log.error('Options -T and -d are mutually exclusive')
         exit(1)
 
     if (not opts.config_file) and (not opts.destroy) :
@@ -252,7 +260,7 @@ def gen_cloudformation_template(conf):
             # bump
             res_counter += 1
 
-    return json.dumps(template)
+    return json.dumps(template, indent=4)
 
 def upload_cloudformation_template(template, name):
     ''' Creates/updates cloudformation template given by name. Expects template as string in json format. '''
@@ -335,6 +343,12 @@ def read_file(filename):
     contents = fo.read()
     fo.close()
     return contents
+
+def write_file(filename, contents):
+    ''' Open file, write contents, close file '''
+    fo = open(filename, 'w')
+    fo.write(contents)
+    fo.close()
 
 def create_deployment_package(code_path):
     ''' Returns a byte stream representing the lambda function code in code_path as a zip file. Renames the lambda function code to code.py '''
